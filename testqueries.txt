@@ -1,0 +1,77 @@
+##1.query
+
+PREFIX ddis: <http://ddis.ch/atai/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?lbl WHERE {  
+    ?movie wdt:P31 wd:Q11424 .  
+    ?movie wdt:P577 ?releaseDate .  
+    ?movie rdfs:label ?lbl .  
+    FILTER(LANG(?lbl) = "en")  
+}  
+ORDER BY ASC(?releaseDate)  
+LIMIT 1
+
+##2.query
+PREFIX ddis: <http://ddis.ch/atai/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?lbl WHERE {  
+    ?movie wdt:P31 wd:Q11424 .  
+    ?movie wdt:P577 ?releaseDate .  
+    ?movie rdfs:label ?lbl .  
+    FILTER(LANG(?lbl) = "en")  
+}  
+ORDER BY DESC(?releaseDate)  
+LIMIT 1
+
+##3.query
+PREFIX ddis: <http://ddis.ch/atai/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?lbl WHERE {  
+    ?movie wdt:P31 wd:Q11424 .  
+    ?movie ddis:rating ?rating .  
+    ?movie rdfs:label ?lbl .  
+    FILTER(LANG(?lbl) = "en")  
+}  
+ORDER BY DESC(?rating)  
+LIMIT 1
+
+
+##4.query
+PREFIX ddis: <http://ddis.ch/atai/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?lbl WHERE {  
+    ?movie wdt:P31 wd:Q11424 .  
+    ?movie wdt:P577 ?releaseDate .  
+    ?movie rdfs:label ?lbl .  
+    FILTER(LANG(?lbl) = "en")  
+}  
+ORDER BY ASC(?releaseDate)  
+LIMIT 5
+
+##5.query
+PREFIX ddis: <http://ddis.ch/atai/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?lbl (COUNT(?castMember) AS ?castCount) WHERE {  
+    ?movie wdt:P31 wd:Q11424 .  
+    ?movie wdt:P161 ?castMember .  
+    ?movie rdfs:label ?lbl .  
+    FILTER(LANG(?lbl) = "en")  
+}  
+GROUP BY ?movie ?lbl
+ORDER BY DESC(?castCount)  
+LIMIT 1

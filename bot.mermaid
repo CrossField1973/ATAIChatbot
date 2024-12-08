@@ -1,0 +1,48 @@
+flowchart TD
+    A[User Provides Input]
+    B{Is Input a SPARQL Query?}
+    C[Execute SPARQL Query Against Knowledge Graph]
+    D[Return SPARQL Query Results to User]
+    E{Is Input a Recommendation Question?}
+    F[Check if all Movies are in KG]
+    G[Retrieve Movie Data from KG]
+    H[Identify Missing Movies]
+    I{Fallback Strategy}
+    J[Suggest Similar Movies in KG]
+    K[Proceed with Valid Movies Only]
+    L[Fetch Data from External API and Enrich KG]
+    M[Vectorize Movie Features]
+    N[Calculate Similarity Scores]
+    O[Generate Movie Recommendations]
+    P[Return Recommendations to User]
+    Q[Handle Input Using Embeddings]
+    R[Perform Semantic Search/Context Matching]
+    S[Return Contextual Results to User]
+    
+    A --> B
+    B -->|True| C
+    C --> D
+    B -->|False| E
+    E -->|True| F
+    F -->|Yes| G
+    F -->|No| H
+    H --> I
+    I -->|Suggest Alternatives| J
+    I -->|Ignore Missing Movies| K
+    I -->|Extend KG| L
+    G --> M
+    K --> M
+    L --> M
+    M --> N
+    N --> O
+    O --> P
+    E -->|False| Q
+    Q --> R
+    R --> S
+
+    %% Data Sources
+    DS1[(Movies Knowledge Graph)]
+    DS2[(External APIs)]
+    DS3[(User Preferences Database)]
+    DS4[(Embedding Model)]
+    DS5[(Movie Metadata Files)]
