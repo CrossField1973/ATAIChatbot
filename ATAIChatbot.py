@@ -34,9 +34,38 @@ class Agent:
         # Initialize the graph
         self.graph = self._initialize_graph()
         
-        # Initialize hot reloaders for each component
+        # Initialize hot reloaders for each component with immediate initialization
         print("Initializing class instances...")
-        self._init_all_components()
+        self.sparql_reloader = HotReloader(
+            "SparQLTask",
+            class_name="SparQLTask",
+            class_args={"graph": self.graph}
+        ).get_instance()  # Sofortige Initialisierung
+        
+        self.embedding_reloader = HotReloader(
+            "EmbeddingTask",
+            class_name="EmbeddingTask",
+            class_args={"graph": self.graph, "path": "./"}
+        ).get_instance()  # Sofortige Initialisierung
+        
+        self.movie_reloader = HotReloader(
+            "MovieRecommendation",
+            class_name="MovieRecommendation",
+            class_args={"graph": self.graph}
+        ).get_instance()  # Sofortige Initialisierung
+        
+        self.multimedia_reloader = HotReloader(
+            "Multimedia",
+            class_name="Multimedia",
+            class_args={"graph": self.graph}
+        ).get_instance()  # Sofortige Initialisierung
+        
+        self.crowdsourcing_reloader = HotReloader(
+            "Crowdsourcing",
+            class_name="Crowdsourcing",
+            class_args={}
+        ).get_instance()  # Sofortige Initialisierung
+        
         print("Class instances initialized!")
         
         # Initialize Speakeasy
@@ -77,24 +106,8 @@ class Agent:
             
         return graph
 
-    def _init_all_components(self):
-        """Initialize all components in parallel"""
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = [
-                executor.submit(lambda: self.graph),
-                executor.submit(lambda: self.sparql_reloader),
-                executor.submit(lambda: self.embedding_reloader),
-                executor.submit(lambda: self.movie_reloader),
-                executor.submit(lambda: self.multimedia_reloader),
-                executor.submit(lambda: self.crowdsourcing_reloader)
-            ]
-            # Wait for all to complete
-            for future in futures:
-                future.result()
-
     def listen(self):
         while True:
-            # only check active chatrooms (i.e., remaining_time > 0) if active=True.
             rooms: List[Chatroom] = self.speakeasy.get_rooms(active=True)
             for room in rooms:
                 if not room.initiated:
@@ -112,10 +125,10 @@ class Agent:
 
                     try:
                         # Get current instances
-                        sparql_task = self.sparql_reloader.get_instance()
-                        embedding_task = self.embedding_reloader.get_instance()
-                        movie_recommendation = self.movie_reloader.get_instance()
-                        multimedia = self.multimedia_reloader.get_instance()
+                        sparql_task = self.sparql_reloader
+                        embedding_task = self.embedding_reloader
+                        movie_recommendation = self.movie_reloader
+                        multimedia = self.multimedia_reloader
 
                         # Check if the message is empty
                         if (message.message.strip() == ""):
