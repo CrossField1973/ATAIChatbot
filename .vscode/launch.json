@@ -5,12 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Python: ATAIChatbot",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "C:\\Users\\z004re3w\\Documents\\ATAI-New\\ATAIChatbot\\ATAIChatbot.py",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "stopOnEntry": true,
+            "purpose": ["debug-in-terminal"]
         }
     ]
 }

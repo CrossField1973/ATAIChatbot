@@ -5,15 +5,8 @@ from rdflib.plugins.sparql.parser import parseQuery
 
 
 class SparQLTask:
-    graph = None
-
-    def __init__(self):
-        self.graph = rdflib.Graph()
-        self.graph.parse('./14_graph.nt', format='turtle')
-        while len(self.graph) == 0:
-            print("Waiting for the graph to load...")
-            time.sleep(1)
-        print(f"Parsing complete. Graph contains {len(self.graph)} triples.")
+    def __init__(self, graph):
+        self.graph = graph
 
     def is_sparql_query(self, message: str) -> bool:
         # Define a regex pattern for SPARQL queries
@@ -37,7 +30,6 @@ class SparQLTask:
             parseQuery(query)
             return True
         except Exception as e:
-            print(f"Invalid SPARQL query: {e}")
             return False
 
     def process_sparql_query(self, query: str) -> str:

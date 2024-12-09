@@ -1,11 +1,8 @@
-import rdflib
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 import spacy
-import re
 from imdb import IMDb
-import time
 import pickle
 import os
 
@@ -17,13 +14,8 @@ class MovieRecommendation:
     ia = None
     graph = None
 
-    def __init__(self):
-        self.graph = rdflib.Graph()
-        self.graph.parse('./14_graph.nt', format='turtle')
-        while len(self.graph) == 0:
-            print("Waiting for the graph to load...")
-            time.sleep(1)
-        print(f"Parsing complete. Graph contains {len(self.graph)} triples.")
+    def __init__(self, graph):
+        self.graph = graph
         self.ia = IMDb()
 
         self.pickle_file = "./movies_data.pkl"  # File to store pickled data

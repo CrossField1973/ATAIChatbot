@@ -168,12 +168,8 @@ cython_debug/
 #.idea/
 
 ltk_data/
+datasources/
 key_embeddings.pkl 
-entity_embeds.npy 
-14_graph.nt
 movies_data.pkl 
-entity_ids.del 
 relationship_bert.pkl 
-relation_embeds.npy 
-crowd_data.tsv
 credentials.txt

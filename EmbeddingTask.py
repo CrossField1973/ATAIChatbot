@@ -41,8 +41,8 @@ class EmbeddingTask:
         self.graph = graph
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
         self.model = BertModel.from_pretrained('bert-base-cased')
-        self.entity_emb = np.load(f'{path}entity_embeds.npy')
-        self.relation_emb = np.load(f'{path}relation_embeds.npy')
+        self.entity_emb = np.load('./datasources/entity_embeds.npy')
+        self.relation_emb = np.load('./datasources/relation_embeds.npy')
         self.load_entity_dictionaries()
         self.ent2lbl_and_lbl2ent()
         self.rel2name_and_name2rel()
@@ -53,7 +53,7 @@ class EmbeddingTask:
         return match if score >= threshold else None
 
     def load_entity_dictionaries(self):
-        with open(f'{self.path}entity_ids.del',
+        with open('./datasources/entity_ids.del',
                   'r') as ifile:
             self.ent2id = {rdflib.term.URIRef(ent): int(idx) for idx, ent in csv.reader(ifile, delimiter='\t')}
             self.id2ent = {v: k for k, v in self.ent2id.items()}
