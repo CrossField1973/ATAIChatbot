@@ -196,3 +196,17 @@ class EmbeddingTask:
         except Exception as e:
             print(f"Error processing query: {e}")
             return "Unfortunately, I cannot provide an answer right now."
+    
+    def is_embedding_query(self, message: str) -> bool:
+        """
+        Prüft, ob die Nachricht eine Einbettungsabfrage ist.
+        Alle Fragen, die nicht explizit als SPARQL, Multimedia oder Recommendation erkannt werden,
+        werden als potenzielle Embedding-Queries behandelt.
+        
+        Args:
+            message: Die zu prüfende Nachricht
+            
+        Returns:
+            True, wenn die Nachricht als Embedding-Query behandelt werden soll
+        """
+        return True  # Alle nicht anderweitig erkannten Queries werden als Embedding-Queries behandelt

@@ -173,3 +173,4 @@ key_embeddings.pkl
 movies_data.pkl 
 relationship_bert.pkl 
 credentials.txt
+models/

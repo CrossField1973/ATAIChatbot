@@ -15,10 +15,34 @@ flowchart TD
     N[Calculate Similarity Scores]
     O[Generate Movie Recommendations]
     P[Return Recommendations to User]
-    Q[Handle Input Using Embeddings]
-    R[Perform Semantic Search/Context Matching]
-    S[Return Contextual Results to User]
-    
+    Q{Is Input a Multimedia Query?}
+    R[Handle Multimedia Query]
+    S1[Extract Actor Names from Query]
+    S2{Are Actor Names Found?}
+    S3[Retrieve Actor IMDb IDs from Cache]
+    S4{Single or Multiple Actors?}
+    S5[Find Solo Images for Actor]
+    S6[Find Group Images or Other Images for Actor]
+    S7[Return Best Match for Single Actor]
+    S8[Find Top Matches for Multiple Actors]
+    S9[Return Combined Results for Actors]
+    T[Return Multimedia Results to User]
+    U{Is Input an Embedding Query?}
+    V[Process Embedding Query]
+    V1[Tokenize User Query]
+    V2[Find Closest Entity Matches]
+    V3{Are Entity Matches Found?}
+    V4[Find Closest Relationship Matches]
+    V5{Are Relationship Matches Found?}
+    V6[Retrieve Entity and Relationship Embeddings]
+    V7[Perform Logical Reasoning on KG Embeddings]
+    V8[Calculate Similarities and Distances]
+    V9[Generate Top Predictions]
+    V10[Return Predicted Answers to User]
+    W[Perform Semantic Search/Context Matching]
+    X[Return Contextual Results to User]
+
+    %% Existing Connections
     A --> B
     B -->|True| C
     C --> D
@@ -37,8 +61,41 @@ flowchart TD
     N --> O
     O --> P
     E -->|False| Q
-    Q --> R
-    R --> S
+    Q -->|True| R
+
+    %% Extended Multimedia Query Handling
+    R --> S1
+    S1 --> S2
+    S2 -->|Yes| S3
+    S2 -->|No| T
+    S3 --> S4
+    S4 -->|Single Actor| S5
+    S4 -->|Multiple Actors| S8
+    S5 --> S6
+    S6 --> S7
+    S8 --> S9
+    S7 --> T
+    S9 --> T
+
+    Q -->|False| U
+    U -->|True| V
+
+    %% Extended Embedding Query Handling
+    V --> V1
+    V1 --> V2
+    V2 --> V3
+    V3 -->|Yes| V4
+    V3 -->|No| V10
+    V4 --> V5
+    V5 -->|Yes| V6
+    V5 -->|No| V10
+    V6 --> V7
+    V7 --> V8
+    V8 --> V9
+    V9 --> V10
+
+    U -->|False| W
+    W --> X
 
     %% Data Sources
     DS1[(Movies Knowledge Graph)]
@@ -46,3 +103,14 @@ flowchart TD
     DS3[(User Preferences Database)]
     DS4[(Embedding Model)]
     DS5[(Movie Metadata Files)]
+    DS6[(Multimedia Database)]
+
+    C --> DS1
+    G --> DS1
+    G --> DS2
+    L --> DS2
+    R --> DS6
+    V6 --> DS4
+    V6 --> DS1
+    V8 --> DS1
+    V8 --> DS4

@@ -19,6 +19,7 @@ from Multimedia import Multimedia
 import rdflib
 from hot_reload import HotReloader
 from concurrent.futures import ThreadPoolExecutor
+from llama_handler import LlamaHandler
 
 _ = locale.setlocale(locale.LC_ALL, '')
 #init_notebook_mode(connected=True)
@@ -33,6 +34,18 @@ class Agent:
         
         # Initialize the graph
         self.graph = self._initialize_graph()
+        
+        # Initialize Llama handler with desired model size
+        print("Loading Llama model...")
+        try:
+            self.llm = LlamaHandler(model_size="3.2-3b")  # Versuche zuerst Llama 3.2
+        except Exception as e:
+            print(f"Failed to load Llama 3.2, trying Llama 3.1: {e}")
+            try:
+                self.llm = LlamaHandler(model_size="3.1-8b")  # Versuche dann Llama 3.1
+            except Exception as e:
+                print(f"Failed to load Llama 3.1, falling back to Llama 2: {e}")
+                self.llm = LlamaHandler(model_size="2-7b")  # Fallback zu Llama 2
         
         # Initialize hot reloaders for each component with immediate initialization
         print("Initializing class instances...")
@@ -139,11 +152,13 @@ class Agent:
                             result = sparql_task.process_sparql_query(message.message)
                             self.logAnswer("SparQL", result)
                             room.post_messages(result)
+                            
                         # Check for multimedia query
                         elif multimedia.is_multimedia_query(message.message):
                             result = multimedia.handle_multimedia_query(message.message)
                             self.logAnswer("Multimedia", result)
                             room.post_messages(result)
+                            
                         # Check for recommendation query
                         elif movie_recommendation.is_recommendation_query(message.message):
                             # Check movie titles
@@ -165,16 +180,37 @@ class Agent:
 
                                 self.logAnswer("Recommendation", recommended_answer)
                                 room.post_messages(recommended_answer)
-
-                        # Embedding query
+                            
+                        # Try embedding query as primary fallback
                         else:
-                            result = embedding_task.get_embedding_answer(message.message)
-                            self.logAnswer("Embedding", result)
-                            room.post_messages(result)
+                            try:
+                                result = embedding_task.get_embedding_answer(message.message)
+                                # Prüfe ob die Antwort sinnvoll ist
+                                if result and not result.startswith("I couldn't"):
+                                    self.logAnswer("Embedding", result)
+                                    room.post_messages(result)
+                                else:
+                                    # Wenn Embedding keine gute Antwort liefert, nutze Llama als zweiten Fallback
+                                    llm_result = self.llm(message.message)
+                                    self.logAnswer("LLM Fallback", llm_result)
+                                    room.post_messages(llm_result)
+                            except Exception as e:
+                                print(f"Error in embedding processing: {e}")
+                                # Bei Fehlern im Embedding direkt zu Llama als Fallback
+                                llm_result = self.llm(message.message)
+                                self.logAnswer("LLM Fallback", llm_result)
+                                room.post_messages(llm_result)
                             
                     except Exception as e:
                         print(f"Error processing query: {e}")
-                        room.post_messages("Unfortunately, I cannot provide an answer right now.")
+                        # Fallback to Llama even in case of errors
+                        try:
+                            result = self.llm(
+                                f"I encountered an error processing your request. Here's my best attempt to help: {message.message}"
+                            )
+                            room.post_messages(result)
+                        except:
+                            room.post_messages("Unfortunately, I cannot provide an answer right now.")
                     
                     room.mark_as_processed(message)
 
