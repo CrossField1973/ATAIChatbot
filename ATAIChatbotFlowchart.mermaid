@@ -1,0 +1,81 @@
+flowchart TD
+    A[User Input] --> M1{is_multimedia_query?}
+    
+    %% Multimedia Path
+    M1 -->|Yes| P[Extract Actor Names]
+    P --> Q[Get IMDb IDs from Cache]
+    Q --> R{Multiple Actors?}
+    R -->|No| S1[Find Single Actor Image]
+    R -->|Yes| S1[Find Single Actor Image]
+    S1 --> T[Return Best Images]
+    
+    %% Recommendation Path
+    M1 -->|No| M2{is_recommendation_query?}
+    M2 -->|Yes| E[Extract Movie Titles via spaCy]
+    E --> F[Check Movies in DataFrame]
+    F --> G[Load Movie Features]
+    G --> H[Calculate Cosine Similarity]
+    H --> I[Apply Weighted Scoring]
+    I --> J[Generate Top-3 Recommendations]
+    J --> K[Return Movies with Reasons]
+    
+    %% SPARQL Path
+    M2 -->|No| C1[Generate SPARQL via templates]
+    C1 --> C2{is_valid_sparql?}
+    C2 -->|No| C11[Generate SPARQL via Llama]
+    C11 --> C3
+    C2 -->|Yes| C3[Execute Query on KG]
+    C3 --> C4{Results Found?}
+    C4 -->|Yes| C5[Format Results]
+    C5 --> C6[Return Answer]
+    
+    %% Crowdsourcing Fallback
+    C4 -->|No| CR1[Query Crowdsourcing Data]
+    CR1 --> CR2{Results Found?}
+    CR2 -->|Yes| CR3[Return Crowd Answer]
+    
+    %% Embedding Fallback
+    CR2 -->|No| AD[Process with BERT]
+    AD --> AE[Find Entity Matches]
+    AE --> AF[Find Relationship Matches]
+    AF --> AG[Calculate Top Predictions]
+    AG --> AH[Return Embedding Answer]
+
+    %% Data Sources
+    DS1[(Knowledge Graph)]
+    DS2[(Crowd Data TSV)]
+    DS3[(Image Cache JSON)]
+    DS4[(Entity Embeddings)]
+    DS5[(LLaMA Model)]
+    DS6[(Movies DataFrame)]
+    
+    %% Cache Systems
+    CS1[Movie Feature Cache]
+    CS2[Actor Name Cache]
+    CS3[Embedding Cache]
+    CS4[BERT Cache]
+    
+    %% Data Source Connections
+    DS1 --> C3
+    DS1 --> C11
+    DS2 --> CR1
+    DS3 --> S1
+    DS4 --> AG
+    DS5 --> C1
+    DS6 --> F
+    
+    %% Cache Connections
+    CS1 --> G
+    CS2 --> Q
+    CS3 --> AE
+    CS4 --> AD
+
+    classDef dataSource fill:#fcba03,stroke:#333
+    class DS1,DS2,DS3,DS4,DS5,DS6 dataSource
+
+    classDef cache fill:#82E0AA,stroke:#333
+    class CS1,CS2,CS3,CS4 cache
+
+    %% Highlight Decision Points
+    classDef decision fill:#FF9999,stroke:#333
+    class M1,M2,C2,C4,CR2,R decision

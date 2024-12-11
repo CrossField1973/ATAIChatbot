@@ -1,134 +1,367 @@
+from rdflib import Graph, URIRef, Literal, Namespace, XSD
 import pandas as pd
-from collections import Counter
-from rdflib import Graph, URIRef, Literal
-from rdflib.namespace import RDF
+from collections import Counter, defaultdict
+from statsmodels.stats.inter_rater import fleiss_kappa
+from fuzzywuzzy import fuzz
 
 class Crowdsourcing:
-    def __init__(self):
-        print("Initializing Crowdsourcing module...")
+    def __init__(self, graph, tsv_file):
+        """Initialisiert die Crowdsourcing-Klasse mit den Daten aus der TSV-Datei und einem RDF-Graphen."""
         try:
-            # Load data during initialization
-            print("Loading crowd data...")
-            self.df = self.load_crowd_data('./datasources/crowd_data.tsv')
+            self.data = pd.read_csv(tsv_file, sep='\t')
+            print(f"Geladene Datensätze: {len(self.data)}")
             
-            # Filter malicious workers
-            print("Filtering malicious workers...")
-            self.filtered_df = self.filter_malicious_workers(self.df)
+            self.graph = graph
+            self.filtered_data = self.filter_malicious_workers()
+            print(f"Datensätze nach Filter: {len(self.filtered_data)}")
             
-            # Get initial aggregated results
-            print("Aggregating answers...")
-            self.aggregated_results = self.aggregate_answers(self.filtered_df)
+            print("\nStarte Aggregation der Antworten...")
+            self.aggregated_results = self.aggregate_answers()
+            print(f"Aggregierte Ergebnisse: {len(self.aggregated_results)}")
             
-            print("Computing basic agreement statistics...")
-            self.agreement_stats = self.compute_basic_agreement(self.filtered_df)
+            print("\nBerechne Fleiss Kappa...")
+            self.kappas = self.compute_fleiss_kappa()
             
-            print(f"Crowdsourcing initialized with agreement rate: {self.agreement_stats:.2f}")
-            print("Initial aggregated results computed")
+            print("\nErstelle HIT Mapping...")
+            self.hit_mapping = self._create_hit_mapping()
+            
+            self.added_relations = []
+            
+            print("\nAktualisiere Graph mit Crowd-Daten...")
+            self.update_graph_with_crowd_data()
+            
+            print("\nDrucke hinzugefügte Relationen...")
+            self.print_added_relations()
             
         except Exception as e:
-            print(f"Error during Crowdsourcing initialization: {str(e)}")
+            print(f"Fehler in __init__: {str(e)}")
             raise
-
-    def load_crowd_data(self, file_path):
-        return pd.read_csv(file_path, sep='\t')
-
-    def filter_malicious_workers(self, df, min_approval_rate=0.8, max_time_multiplier=5, min_time_multiplier=0.1):
+    
+    def filter_malicious_workers(self, min_approval_rate=0.8, max_work_time=3600):
         """
-        Filters out malicious workers based on time and approval rate criteria.
+        Filtert Antworten von böswilligen Crowd-Workern.
+        
+        Args:
+            min_approval_rate: Minimale Zustimmungsrate (default: 0.8 oder 80%)
+            max_work_time: Maximale Arbeitszeit in Sekunden (default: 3600)
         """
-        print("Applying worker filtering criteria...")
+        # Zuerst die Daten anzeigen
+        print("\nVerfügbare Assignment Status:")
+        print(self.data['AssignmentStatus'].value_counts())
         
-        # Konvertiere LifetimeApprovalRate zu float
-        print("Converting approval rate to float...")
-        df['LifetimeApprovalRate'] = pd.to_numeric(df['LifetimeApprovalRate'].str.rstrip('%'), errors='coerce') / 100
-        
-        # Konvertiere WorkTimeInSeconds zu float falls nötig
-        print("Converting work time to float...")
-        df['WorkTimeInSeconds'] = pd.to_numeric(df['WorkTimeInSeconds'], errors='coerce')
-        
-        # Berechne Durchschnittszeit
-        avg_time = df['WorkTimeInSeconds'].mean()
-        print(f"Average work time: {avg_time:.2f} seconds")
-        
-        # Filtere ungültige Werte
-        filtered_df = df.dropna(subset=['LifetimeApprovalRate', 'WorkTimeInSeconds'])
-        
-        # Wende Filter an
-        filtered_df = filtered_df[
-            (filtered_df['LifetimeApprovalRate'] >= min_approval_rate) & 
-            (filtered_df['WorkTimeInSeconds'] <= avg_time * max_time_multiplier) & 
-            (filtered_df['WorkTimeInSeconds'] >= avg_time * min_time_multiplier)
+        filtered = self.data[
+            (self.data['LifetimeApprovalRate'].str.rstrip('%').astype(float) / 100 >= min_approval_rate) &
+            (self.data['WorkTimeInSeconds'].astype(float) <= max_work_time) &
+            (self.data['WorkTimeInSeconds'].astype(float) > 0) &
+            (self.data['AssignmentStatus'] == 'Submitted')  # Fokus auf "Submitted" Status
         ]
         
-        # Additional filtering based on agreement with majority
-        print("Computing worker reliability...")
-        worker_reliability = {}
-        for hit_id in filtered_df['HITId'].unique():
-            hit_answers = filtered_df[filtered_df['HITId'] == hit_id]
-            if len(hit_answers) > 0:  # Sicherheitscheck
-                majority_answer = hit_answers['AnswerLabel'].mode().iloc[0]
-                
-                for _, row in hit_answers.iterrows():
-                    worker_id = row['WorkerId']
-                    if worker_id not in worker_reliability:
-                        worker_reliability[worker_id] = {'correct': 0, 'total': 0}
+        print("\nFilter-Statistiken:")
+        print(f"Approval Rate Filter: {len(self.data[self.data['LifetimeApprovalRate'].str.rstrip('%').astype(float) / 100 >= min_approval_rate])}")
+        print(f"Work Time Filter: {len(self.data[self.data['WorkTimeInSeconds'].astype(float) <= max_work_time])}")
+        print(f"Status Filter: {len(self.data[self.data['AssignmentStatus'] == 'Submitted'])}")
+        
+        return filtered
+    
+    def aggregate_answers(self):
+        """Aggregiert Antworten mit Mehrheitsabstimmung."""
+        try:
+            print("Debug: Starte Aggregation...")
+            aggregated_results = {}
+            
+            # Zeige die ersten paar Zeilen der gefilterten Daten
+            print("\nErste Zeilen der gefilterten Daten:")
+            print(self.filtered_data[['HITId', 'AnswerLabel', 'Input1ID', 'Input2ID', 'Input3ID']].head())
+            
+            for hit_id, group in self.filtered_data.groupby('HITId'):
+                try:
+                    print(f"\nVerarbeite HIT ID: {hit_id}")
+                    print(f"Anzahl Antworten: {len(group)}")
                     
-                    worker_reliability[worker_id]['total'] += 1
-                    if row['AnswerLabel'] == majority_answer:
-                        worker_reliability[worker_id]['correct'] += 1
-
-        # Keep workers with at least 60% agreement with majority
-        reliable_workers = [
-            worker_id for worker_id, stats in worker_reliability.items()
-            if stats['total'] > 0 and (stats['correct'] / stats['total'] >= 0.6)
-        ]
+                    # Überprüfe, ob genügend Antworten vorhanden sind
+                    if len(group) == 0:
+                        print(f"Überspringe HIT {hit_id} - keine Antworten")
+                        continue
+                        
+                    answer_counts = Counter(group['AnswerLabel'])
+                    print(f"Antwortverteilung: {dict(answer_counts)}")
+                    
+                    # Überprüfe, ob es eine eindeutige Mehrheit gibt
+                    max_count = max(answer_counts.values())
+                    majority_answers = [ans for ans, count in answer_counts.items() if count == max_count]
+                    
+                    if len(majority_answers) > 1:
+                        print(f"Keine eindeutige Mehrheit für HIT {hit_id}")
+                        majority_answer = majority_answers[0]  # Nimm die erste Antwort als Default
+                    else:
+                        majority_answer = majority_answers[0]
+                        
+                    print(f"Mehrheitsantwort: {majority_answer}")
+                    
+                    # Stelle sicher, dass die Werte existieren
+                    if group['Input1ID'].empty or group['Input2ID'].empty or group['Input3ID'].empty:
+                        print(f"Überspringe HIT {hit_id} - fehlende Input-Werte")
+                        continue
+                        
+                    triple_info = {
+                        'subject': group['Input1ID'].iloc[0],
+                        'predicate': group['Input2ID'].iloc[0],
+                        'object': group['Input3ID'].iloc[0]
+                    }
+                    
+                    fix_info = None
+                    if majority_answer == 'INCORRECT':
+                        fix_positions = Counter(group[group['FixPosition'].notna()]['FixPosition'])
+                        if fix_positions:
+                            most_common_pos = fix_positions.most_common(1)[0][0]
+                            fix_values = group[group['FixPosition'] == most_common_pos]['FixValue']
+                            fix_value = fix_values.mode()[0] if not fix_values.empty else None
+                            if fix_value:
+                                fix_info = {'position': most_common_pos, 'value': fix_value}
+                    
+                    aggregated_results[hit_id] = {
+                        'majority_answer': majority_answer,
+                        'answer_distribution': dict(answer_counts),
+                        'triple': triple_info,
+                        'fix_info': fix_info
+                    }
+                    
+                except Exception as e:
+                    print(f"Fehler bei der Verarbeitung von HIT {hit_id}: {str(e)}")
+                    continue
+            
+            print(f"\nGesamtzahl aggregierter Ergebnisse: {len(aggregated_results)}")
+            if len(aggregated_results) == 0:
+                print("Warnung: Keine Ergebnisse wurden aggregiert")
+                return {}
+                
+            return aggregated_results
+            
+        except Exception as e:
+            print(f"Fehler in aggregate_answers: {str(e)}")
+            return {}
+    
+    def compute_fleiss_kappa(self):
+        """Berechnet Fleiss' Kappa für jeden Batch."""
+        kappas = {}
+        for hit_type_id, group in self.filtered_data.groupby('HITTypeId'):
+            hit_ratings = defaultdict(lambda: {'CORRECT': 0, 'INCORRECT': 0})
+            
+            for _, row in group.iterrows():
+                hit_ratings[row['HITId']][row['AnswerLabel']] += 1
+            
+            matrix = [[counts['CORRECT'], counts['INCORRECT']] 
+                     for counts in hit_ratings.values()]
+            
+            if matrix:
+                kappas[hit_type_id] = fleiss_kappa(matrix)
+            
+        return kappas
+    
+    def _create_hit_mapping(self):
+        """Erstellt ein Mapping von Triple-Informationen zu HITIds."""
+        hit_mapping = {}
+        for hit_id, result in self.aggregated_results.items():
+            triple = result['triple']
+            key_combinations = [
+                f"{triple['subject']} {triple['predicate']} {triple['object']}",
+                f"{triple['subject']} {triple['object']}",
+                f"{triple['predicate']} {triple['object']}",
+                triple['subject'],
+                triple['object']
+            ]
+            for key in key_combinations:
+                if key not in hit_mapping:
+                    hit_mapping[key] = []
+                hit_mapping[key].append(hit_id)
         
-        final_filtered_df = filtered_df[filtered_df['WorkerId'].isin(reliable_workers)]
-        print(f"Filtered from {len(df)} to {len(final_filtered_df)} entries")
-        return final_filtered_df
-
-    def aggregate_answers(self, df):
+        return hit_mapping
+    
+    def update_graph_with_crowd_data(self):
+        """Aktualisiert den RDF-Graphen basierend auf den Crowdsourcing-Daten."""
+        try:
+            if not self.aggregated_results:
+                print("Keine aggregierten Ergebnisse verfügbar")
+                return
+            
+            print("\nFüge Triples zum Graphen hinzu...")
+            for hit_id, result in self.aggregated_results.items():
+                try:
+                    triple = result['triple']
+                    if result['majority_answer'] == 'CORRECT':
+                        # Stelle sicher, dass die URIs korrekt formatiert sind
+                        subject = triple['subject'] if triple['subject'].startswith('http') else f"http://www.wikidata.org/entity/{triple['subject'].replace('wd:', '')}"
+                        predicate = triple['predicate'] if triple['predicate'].startswith('http') else f"http://www.wikidata.org/prop/direct/{triple['predicate'].replace('wdt:', '')}"
+                        
+                        # Überprüfe, ob das Objekt ein Datum ist
+                        object_value = triple['object']
+                        if isinstance(object_value, str) and any(
+                            object_value.count(sep) >= 2 for sep in ['-', '/', '.']
+                        ):
+                            # Behandle als Datum
+                            object_uri = Literal(object_value, datatype=XSD.date)
+                            print(f"Datum erkannt: {object_value}")
+                        else:
+                            # Behandle als normale URI
+                            object_uri = URIRef(object_value if object_value.startswith('http') else f"http://www.wikidata.org/entity/{object_value}")
+                        
+                        print(f"Füge Triple hinzu für HIT {hit_id}:")
+                        print(f"Subject: {subject}")
+                        print(f"Predicate: {predicate}")
+                        print(f"Object: {object_uri}")
+                        
+                        self.graph.add((URIRef(subject), URIRef(predicate), object_uri))
+                        self.added_relations.append({
+                            'subject': subject.split('/')[-1],
+                            'predicate': predicate.split('/')[-1],
+                            'object': str(object_uri),
+                            'type': 'original'
+                        })
+                        
+                except Exception as e:
+                    print(f"Fehler beim Hinzufügen von Triple für HIT {hit_id}: {str(e)}")
+                    continue
+                
+        except Exception as e:
+            print(f"Fehler in update_graph_with_crowd_data: {str(e)}")
+    
+    def print_added_relations(self):
+        """Gibt alle zum Graphen hinzugefügten Relationen aus."""
+        print("\nHinzugefügte Relationen:")
+        print("------------------------")
+        for relation in self.added_relations:
+            relation_str = f"{relation['subject']} --[{relation['predicate']}]--> {relation['object']}"
+            if relation['type'] != 'original':
+                relation_str += f" (Korrigiert: {relation['type']})"
+            print(relation_str)
+        print(f"\nGesamtzahl der hinzugefügten Relationen: {len(self.added_relations)}")
+    
+    def get_crowd_answer(self, sparql_query):
         """
-        Aggregates answers using simple majority voting.
-        """
-        aggregated = {}
-        for hit_id in df['HITId'].unique():
-            answers = df[df['HITId'] == hit_id]['AnswerLabel']
-            majority_vote = Counter(answers).most_common(1)[0][0]
-            aggregated[hit_id] = majority_vote
-        return aggregated
-
-    def compute_basic_agreement(self, df):
-        """
-        Computes basic agreement rate between workers.
-        """
-        majority_answers = self.aggregate_answers(df)
-        total_matches = 0
-        total_answers = 0
+        Führt eine SPARQL-Query auf dem erweiterten Knowledge Graph aus und gibt die formatierte Antwort zurück.
         
-        for hit_id in df['HITId'].unique():
-            hit_answers = df[df['HITId'] == hit_id]['AnswerLabel']
-            majority = majority_answers[hit_id]
-            matches = sum(answer == majority for answer in hit_answers)
-            total_matches += matches
-            total_answers += len(hit_answers)
+        Returns:
+            tuple: (answer, kappa, answer_distribution)
+        """
+        try:
+            # Führe die SPARQL-Query auf dem erweiterten Graphen aus
+            results = self.graph.query(sparql_query)
+            results_list = list(results)
+            
+            if not results_list:
+                return ("Keine Crowd-Antwort verfügbar.", None, None)
+            
+            # Formatiere die Ergebnisse
+            formatted_results = []
+            for row in results_list:
+                if len(row) == 1:
+                    value = row[0]
+                    if isinstance(value, URIRef):
+                        formatted_results.append(str(value).split('/')[-1])
+                    elif isinstance(value, Literal):
+                        formatted_results.append(str(value))
+                    else:
+                        formatted_results.append(str(value))
+                else:
+                    row_values = []
+                    for value in row:
+                        if isinstance(value, URIRef):
+                            row_values.append(str(value).split('/')[-1])
+                        elif isinstance(value, Literal):
+                            row_values.append(str(value))
+                        else:
+                            row_values.append(str(value))
+                    formatted_results.append(", ".join(row_values))
+            
+            answer = "\n".join(f"- {item}" for item in formatted_results) if len(formatted_results) > 1 else formatted_results[0]
+            
+            # Finde das relevante HIT für diese Antwort
+            hit_id = self._find_best_matching_hit(sparql_query)
+            
+            if hit_id and hit_id in self.aggregated_results:
+                result = self.aggregated_results[hit_id]
+                hit_type_id = self.filtered_data[self.filtered_data['HITId'] == hit_id]['HITTypeId'].iloc[0]
+                kappa = self.kappas.get(hit_type_id)
+                answer_distribution = result['answer_distribution']
+                return (answer, kappa, answer_distribution)
+            
+            return (answer, None, None)
+            
+        except Exception as e:
+            print(f"Fehler bei der Ausführung der SPARQL-Query: {e}")
+            return ("Leider konnte ich keine Antwort auf diese Frage finden.", None, None)
+    
+    def append_crowdsourcing_information(self, answer: str, kappa: float, distribution: dict) -> str:
+        """
+        Formatiert die Antwort mit Crowdsourcing-Informationen.
         
-        return total_matches / total_answers if total_answers > 0 else 0.0
+        Args:
+            answer: Die Basis-Antwort
+            kappa: Fleiss' Kappa Wert für den Batch
+            distribution: Verteilung der Antworten
+        
+        Returns:
+            str: Formatierte Antwort mit Crowdsourcing-Informationen
+        """
+        if not answer or answer == "Keine Crowd-Antwort verfügbar.":
+            return answer
+        
+        formatted_answer = answer
+        
+        # Füge Kappa-Information hinzu, wenn verfügbar
+        if kappa is not None:
+            formatted_answer += f" - according to the crowd, who had an inter-rater agreement of {kappa:.2f} in this batch"
+        
+        # Füge Verteilungsinformation hinzu, wenn verfügbar
+        if distribution:
+            support_votes = distribution.get('CORRECT', 0)
+            reject_votes = distribution.get('INCORRECT', 0)
+            formatted_answer += f". The answer distribution for this specific task was {support_votes} support votes and {reject_votes} reject votes"
+        
+        formatted_answer += "."
+        
+        return formatted_answer
+    
+    def _find_best_matching_hit(self, question, threshold=80):
+        """Findet die am besten passende HIT für eine gegebene Frage."""
+        best_match = None
+        best_score = 0
+        
+        question = question.lower().strip()
+        
+        for key, hit_ids in self.hit_mapping.items():
+            score = fuzz.ratio(question, key.lower())
+            if score > threshold and score > best_score:
+                best_score = score
+                best_match = hit_ids[0]
+        
+        return best_match
 
-    def update_knowledge_graph(self, graph, crowd_data):
-        """
-        Updates the knowledge graph based on crowdsourced data.
-        """
-        for _, row in crowd_data.iterrows():
-            if row['FinalAnswer'] == 'CORRECT':
-                triple = (URIRef(row['Input1ID']), URIRef(row['Input2ID']), Literal(row['Input3ID']))
-                graph.add(triple)
-            elif row['FinalAnswer'] == 'INCORRECT' and not pd.isna(row['FixValue']):
-                if row['FixPosition'] == 'subject':
-                    triple = (URIRef(row['FixValue']), URIRef(row['Input2ID']), Literal(row['Input3ID']))
-                elif row['FixPosition'] == 'predicate':
-                    triple = (URIRef(row['Input1ID']), URIRef(row['FixValue']), Literal(row['Input3ID']))
-                elif row['FixPosition'] == 'object':
-                    triple = (URIRef(row['Input1ID']), URIRef(row['Input2ID']), Literal(row['FixValue']))
-                graph.add(triple)
-        return graph
+
+if __name__ == "__main__":
+    # Load the Turtle file
+    turtle_file = "./datasources/14_graph.nt"  # Replace with your Turtle file name
+    g = Graph()
+    g.parse(turtle_file, format="turtle")
+
+    # Define namespace for RDFS (for rdfs:label)
+    RDFS = Namespace("http://www.w3.org/2000/01/rdf-schema#")
+
+    # SPARQL query to extract unique predicates
+    query = """
+    SELECT DISTINCT ?predicate ?label
+    WHERE {
+        ?subject ?predicate ?object .
+        OPTIONAL { ?predicate <http://www.w3.org/2000/01/rdf-schema#label> ?label }
+    }
+    """
+
+    # Execute the query
+    results = g.query(query)
+
+    # Extract and print the predicates as a list
+    print("List of predicates and their labels:")
+    for row in results:
+        predicate = str(row.predicate)
+        label = str(row.label) if row.label else "No label"
+        print(f"Predicate: {predicate}, Label: {label}")

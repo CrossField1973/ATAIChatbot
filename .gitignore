@@ -174,3 +174,5 @@ movies_data.pkl
 relationship_bert.pkl 
 credentials.txt
 models/
+speakeasy-python-client-library/
+submission/
